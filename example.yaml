@@ -1,0 +1,45 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: d3m-example-pod
+spec:
+  restartPolicy: Never
+  containers:
+  - name: d3m-example
+    image: registry.datadrivendiscovery.org/d3m/d3m-summer2018-run-example:D3M_Your_Team_Image_Name
+    env:
+    - name: D3MRUN
+      value: "search"
+    - name: D3MINPUTDIR
+      value: "/input"
+    - name: D3MOUTPUTDIR
+      value: "/output"
+    - name: D3MTESTOPT
+      value: "/output/bestfit.py"
+    - name: D3MCPU
+      value: "1"
+    - name: D3MRAM
+      value: "512Mi"
+    - name: D3MTIMEOUT
+      value: "10"
+    volumeMounts:
+      - name: input-data
+        mountPath: /input
+        readOnly: true
+      - name: output-data
+        mountPath: /output
+        readOnly: false
+    resources:
+      requests:
+        memory: 512Mi
+        cpu: 1
+  imagePullSecrets:
+  - name: regcred
+  volumes:
+  - name: input-data
+    hostPath:
+      path: /opt/datasets/seed_datasets_current/185_baseball
+      type: Directory
+  - name: output-data
+    persistentVolumeClaim:
+      claimName: eval-output-pv-claim
