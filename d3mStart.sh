@@ -1,45 +1,25 @@
 #!/bin/bash
 
-cd  /user_dev
+cd /user_dev/src
 
-case $D3MRUN in
-  search)
-    echo "executing search"
-    # Each individual project should call whatever code with whatever parameter to do search(replace python example.py)
-    #This section is show for search mode what directories will be archive
-    mkdir -p ${D3MOUTPUTDIR}/pipelines
-    mkdir -p ${D3MOUTPUTDIR}/executables
-    mkdir -p ${D3MOUTPUTDIR}/supporting_files
-
-    touch ${D3MOUTPUTDIR}/pipelines/pipe.txt
-    touch ${D3MOUTPUTDIR}/executables/exe.txt
-    touch ${D3MOUTPUTDIR}/supporting_files/support.txt
-    #
-    python example.py
-    ;;
-  test)
-    echo "executing test"
-    # Each individual project should call whatever code with whatever parameter to do test(replace python example.py)
-    # This section is show for search mode what directories will be archive
-    mkdir -p ${D3MOUTPUTDIR}/pipelines
-    mkdir -p ${D3MOUTPUTDIR}/executables
-    mkdir -p ${D3MOUTPUTDIR}/supporting_files
-    mkdir -p ${D3MOUTPUTDIR}/predictions
-
-    # not creating anything in pipelines because it was populated in search mode
-    touch ${D3MOUTPUTDIR}/predictions/predict.txt
-    touch ${D3MOUTPUTDIR}/executables/exe.txt
-    touch ${D3MOUTPUTDIR}/supporting_files/support.txt
-    #
-    python example.py $D3MTESTOPT
-    ;;
-  ta2ta3)
-    echo "executing ta2 ta3 combine run"
-    # Each individual project should call whatever code with whatever parameter to do execute with TA3(replace python example.py)
-    python example.py
-    ;;
-  *)
-    echo "don\'t know what to do"
-    python example.py
-    ;;
+case $D3MTYPE in
+    single_client)
+        echo "Running as single run client"
+        ./client.py -p $D3MPORT -o $D3MHOST
+        ;;
+    loop_client)
+        echo "Running as loop client"
+        ./client.py -o $D3MHOST -p $D3MPORT --loop
+        ;;
+    default_scheduler)
+        echo "Running as scheduler for default parameters settings"
+        ./scheduler.py --resume --default $D3MOUTPUTDIR
+        ;;
+    scheduler)
+        echo "Running as scheduler for all parameter settings"
+        ./scheduler.py --resume $D3MOUTPUTDIR
+        ;;
+    *)
+        echo "don't know what to do with: $D3MTYPE"
+        ;;
 esac

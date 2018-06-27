@@ -9,8 +9,8 @@ build_image:
 
   script:
     - docker login -u gitlab-ci-token -p "$CI_BUILD_TOKEN" $CI_REGISTRY
-    - docker build -t "$CI_REGISTRY_IMAGE:D3M_Your_Team_Image_Name" -f Dockerfile .
-    - docker push "$CI_REGISTRY_IMAGE:D3M_Your_Team_Image_Name"
+    - docker build -t "$CI_REGISTRY_IMAGE:D3M_sklearn-pmlb-benchmarks" -f Dockerfile .
+    - docker push "$CI_REGISTRY_IMAGE:D3M_sklearn-pmlb-benchmarks"
 
   only:
     - master

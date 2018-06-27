@@ -1,0 +1,3 @@
+D3MTYPE=single_client
+D3MPORT=3000
+D3MHOST=172.17.0.2
