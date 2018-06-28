@@ -6,7 +6,7 @@ spec:
   restartPolicy: Never
   containers:
   - name: d3m-sklearn-pmlb-benchmarks
-    image: registry.datadrivendiscovery.org/d3m/sklearn-pmlb-benchmarks:D3M_sklearn-pmlb-benchmarks
+    image: registry.datadrivendiscovery.org/gversteeg/sklearn-pmlb-benchmarks:D3M_sklearn-pmlb-benchmarks
     env:
     - name: D3MINPUTDIR
       value: "/input"
@@ -23,7 +23,7 @@ spec:
     - name: D3MHOST
       value: "localhost"
     - name: D3MPORT
-      value: 3000
+      value: "3000"
     resources:
       requests:
         memory: 512Mi
