@@ -1,7 +1,7 @@
 FROM ubuntu:16.04
 
 # install software
-RUN apt-get update && apt-get install -y python3 python3-pip git
+RUN apt update && apt install -y python3 python3-pip git htop
 COPY requirements.txt /tmp
 RUN pip3 install -r /tmp/requirements.txt
 
