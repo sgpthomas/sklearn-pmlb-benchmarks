@@ -7,6 +7,7 @@ import itertools
 from pathlib import Path
 import traceback
 import os
+import sys
 import pandas as pd
 from time import sleep
 
@@ -193,7 +194,6 @@ if __name__ == "__main__":
         p = Path(resultdir)
         ids = list(map(lambda s: int(s.stem.split('-')[1]), p.glob("tmp-*.pkl")))
         for i in ids:
-            print(i, flush=True)
             todos.complete(i)
 
     total = todos.size()
@@ -211,7 +211,7 @@ if __name__ == "__main__":
                 if handle_client(clients, k) != None:
                     to_remove.append(k)
             for item in to_remove:
-                print("Removing {}".format(item), flush=True)
+                print("Removing {}".format(item))
                 if clients[item]['task'] != None:
                     todos.abort(clients[item]['task'])
                 del clients[item]
@@ -219,16 +219,17 @@ if __name__ == "__main__":
             c, addr = s.accept()
             c.settimeout(1)
             clients[addr] = {'client': c, 'task': None}
-            print("Connected to {}:{}!".format(addr[0], addr[1]), flush=True)
+            print("Connected to {}:{}!".format(addr[0], addr[1]))
         except socket.timeout:
             pass
         except KeyboardInterrupt:
-            print("Shutting down server!", flush=True)
-            print("Aborting progress on:", flush=True)
+            print("Shutting down server!")
+            print("Aborting progress on:")
             for item in todos.in_progress():
-                print(" [-] {}".format(item), flush=True)
+                print(" [-] {}".format(item))
             s.close()
             exit(0)
+        sys.stdout.flush()
     print("No more todos!", flush=True)
     for item in todos.in_progress():
         print(" [-] {}".format(item), flush=True)
