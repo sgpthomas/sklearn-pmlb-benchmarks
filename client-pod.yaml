@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: d3m-pmlb-client-pod
+spec:
+  restartPolicy: Never
+  containers:
+  - name: d3m-sklearn-pmlb-benchmarks
+    image: registry.datadrivendiscovery.org/d3m/d3m-summer2018-run-example:D3M_sklearn-pmlb-benchmarks
+    env:
+    - name: D3MINPUTDIR
+      value: "/input"
+    - name: D3MOUTPUTDIR
+      value: "/output"
+    - name: D3MTYPE
+      value: "loop_client"
+    - name: D3MCPU
+      value: "1"
+    - name: D3MRAM
+      value: "512Mi"
+    - name: D3MTIMEOUT
+      value: "10"
+    resources:
+      requests:
+        memory: 512Mi
+        cpu: 1
+  imagePullSecrets:
+  - name: regcred
