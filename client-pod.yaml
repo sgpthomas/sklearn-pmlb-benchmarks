@@ -20,6 +20,10 @@ spec:
       value: "512Mi"
     - name: D3MTIMEOUT
       value: "10"
+    - name: D3MHOST
+      value: "localhost"
+    - name: D3MPORT
+      value: 3000
     resources:
       requests:
         memory: 512Mi
