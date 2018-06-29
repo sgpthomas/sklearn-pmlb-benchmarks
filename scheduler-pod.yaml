@@ -16,12 +16,8 @@ spec:
       value: "/output"
     - name: D3MTYPE
       value: "scheduler"
-    - name: D3MCPU
-      value: "1"
-    - name: D3MRAM
-      value: "512Mi"
-    - name: D3MTIMEOUT
-      value: "10"
+    - name: D3MNUMCLIENTS
+      value: "15"
     volumeMounts:
       - name: output-data
         mountPath: /output

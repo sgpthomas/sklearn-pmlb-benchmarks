@@ -13,7 +13,7 @@ case $D3MTYPE in
         ;;
     default_scheduler)
         echo "Running as scheduler for default parameters settings"
-        ./scheduler.py --resume --default $D3MOUTPUTDIR
+        ./scheduler.py --resume --default $D3MOUTPUTDIR --max-connections $D3MNUMCLIENTS
         ;;
     scheduler)
         echo "Running as scheduler for all parameter settings"

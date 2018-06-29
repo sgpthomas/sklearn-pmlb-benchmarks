@@ -9,9 +9,6 @@ RUN pip3 install -r /tmp/requirements.txt
 RUN mkdir -p /user_dev
 RUN mkdir -p /output
 
-# temporary
-ENV D3MOUTPUTDIR "/output"
-
 # copy start directory
 COPY d3mStart.sh /user_dev
 RUN chmod a+x /user_dev/d3mStart.sh
