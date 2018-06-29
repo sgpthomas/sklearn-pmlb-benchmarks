@@ -8,4 +8,4 @@ spec:
   ports:
     - protocol: TCP
       port: 3000
-  clusterIP: 10.108.5.50
+  clusterIP: 172.16.16.16
