@@ -5,6 +5,7 @@ import argparse
 import trial_msg
 import traceback
 import multiprocessing
+import sys
 
 from classifiers import AdaBoostClassifier
 from classifiers import BernoulliNB
@@ -131,6 +132,7 @@ if __name__ == "__main__":
             print("Something broke! Skipping this trial on this client!")
             traceback.print_exc()
         finally:
+            sys.stdout.flush()
             if not options.loop:
                 break
 
