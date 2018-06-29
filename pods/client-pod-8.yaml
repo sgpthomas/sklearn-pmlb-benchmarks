@@ -21,7 +21,7 @@ spec:
     - name: D3MTIMEOUT
       value: "10"
     - name: D3MHOST
-      value: "localhost"
+      value: "10.108.5.50"
     - name: D3MPORT
       value: "3000"
     resources:
