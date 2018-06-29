@@ -9,6 +9,7 @@ spec:
   containers:
   - name: d3m-sklearn-pmlb-benchmarks
     image: registry.datadrivendiscovery.org/gversteeg/sklearn-pmlb-benchmarks:D3M_sklearn-pmlb-benchmarks
+    imagePullPolicy: Always
     env:
     - name: D3MINPUTDIR
       value: "/input"

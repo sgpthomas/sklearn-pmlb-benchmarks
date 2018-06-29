@@ -1,4 +1,4 @@
-apiVersion: v1
+apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: client-deployment
@@ -17,6 +17,7 @@ spec:
       containers:
       - name: sklearn-pmlb-client
         image: registry.datadrivendiscovery.org/gversteeg/sklearn-pmlb-benchmarks:D3M_sklearn-pmlb-benchmarks
+        imagePullPolicy: Always
         env:
         - name: D3MINPUTDIR
           value: "/input"
