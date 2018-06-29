@@ -3,7 +3,6 @@ kind: Pod
 metadata:
   name: d3m-pmlb-client-pod-7
 spec:
-  restartPolicy: Never
   containers:
   - name: d3m-sklearn-pmlb-benchmarks
     image: registry.datadrivendiscovery.org/gversteeg/sklearn-pmlb-benchmarks:D3M_sklearn-pmlb-benchmarks
