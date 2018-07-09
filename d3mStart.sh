@@ -3,13 +3,9 @@
 cd /user_dev/src
 
 case $D3MTYPE in
-    single_client)
+    client)
         echo "Running as single run client"
         ./client.py -p $D3MPORT -o $D3MHOST
-        ;;
-    loop_client)
-        echo "Running as loop client"
-        ./client.py -o $D3MHOST -p $D3MPORT --loop
         ;;
     default_scheduler)
         echo "Running as scheduler for default parameters settings"
