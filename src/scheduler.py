@@ -112,59 +112,66 @@ def handle_client(clients, key):
 
         # check if client has died
         if data == None:
-            print("Received 'None' from {}. Marked for removal!".format(c['client'].getsockname()))
+            print("Received 'None' from {}. Marked for removal!".format(c['client'].getsockname()[0]))
             return 1
 
-        # switch based on msg_type
-        msg_type = data['msg_type']
-        if msg_type == trial_msg.VERIFY:
-            send_msg(c['client'], {'msg_type': trial_msg.SUCCESS})
+        for data in data:
+            # switch based on msg_type
+            msg_type = data['msg_type']
+            if msg_type == trial_msg.VERIFY:
+                send_msg(c['client'], {'msg_type': trial_msg.SUCCESS})
 
-        elif msg_type == trial_msg.TRIAL_REQUEST:
-            ident, task = None, None
-            item = todos.next()
+            elif msg_type == trial_msg.TRIAL_REQUEST:
+                ident, task = None, None
+                item = todos.next()
 
-            if item == None:
-                print("No more trials!")
-                send_msg(c['client'], {'msg_type': trial_msg.TERMINATE})
-                return
+                if item == None:
+                    print("No more trials!")
+                    send_msg(c['client'], {'msg_type': trial_msg.TERMINATE})
+                    return
 
-            ident, task = item
-            dataset, method, params = task
-            c['task'] = ident
-            send_msg(c['client'], {'msg_type': trial_msg.TRIAL_DETAILS,
-                                   'dataset': dataset,
-                                   'method': method,
-                                   'params': params})
-            print("Handed out #{}: {} {} {}".format(ident, dataset, method, params))
+                ident, task = item
+                dataset, method, params = task
+                c['task'].add(ident)
+                send_msg(c['client'], {'msg_type': trial_msg.TRIAL_DETAILS,
+                                    'id': ident,
+                                    'dataset': dataset,
+                                    'method': method,
+                                    'params': params})
+                print("Handed out #{}: {} {} {}".format(ident, dataset, method, params))
 
-        elif msg_type == trial_msg.TRIAL_DONE:
-            print("{} finished!".format(c['client'].getpeername()))
-            size = data['size']
-            send_msg(c['client'], {'msg_type': trial_msg.TRIAL_SEND})
-            trial_result = trial_msg.deserialize(c['client'].recv(size))
-            commit_result(trial_result, c['task'])
-            todos.complete(c['task'])
-            print("Commited #{} (remaining: {})".format(c['task'], len(todos.remaining())))
-            c['task'] = None
+            elif msg_type == trial_msg.TRIAL_DONE:
+                print("{} finished!".format(c['client'].getpeername()))
+                ident = data['id']
+                trial_result = data['data']
+                # size = data['size']
+                # send_msg(c['client'], {'msg_type': trial_msg.TRIAL_SEND})
+                # trial_result = trial_msg.deserialize(c['client'].recv(trial_msg.SIZE))[0]
+                commit_result(trial_result, ident)
+                todos.complete(ident)
+                send_msg(c['client'], {'msg_type': trial_msg.SUCCESS})
+                print("Commited #{} (remaining: {})".format(ident, len(todos.remaining())))
+                c['task'].remove(ident)
 
-        elif msg_type == trial_msg.TRIAL_CANCEL:
-            print("{} aborted!".format(c['client'].getpeername()))
-            todos.cancel(c['task'])
-            send_msg(c['client'], {'msg_type': trial_msg.SUCCESS})
-            print("Aborting #{} (remaining: {})".format(c['task'], len(todos.remaining())))
-            c['task'] = None
+            elif msg_type == trial_msg.TRIAL_CANCEL:
+                print("{} aborted!".format(c['client'].getpeername()))
+                ident = data['id']
+                todos.cancel(ident)
+                print("Aborting #{} (remaining: {})".format(ident, len(todos.remaining())))
+                send_msg(c['client'], {'msg_type': trial_msg.SUCCESS})
+                c['task'].remove(ident)
 
-        elif msg_type == trial_msg.TERMINATE:
-            return 1
+            elif msg_type == trial_msg.TERMINATE:
+                return 1
 
-        else:
-            print("Unknown msg type: {}!".format(msg_type))
-            send_msg(c['client'], {'msg_type': trial_msg.INVALID})
+            else:
+                print("Unknown msg type: {}!".format(msg_type))
+                send_msg(c['client'], {'msg_type': trial_msg.INVALID})
     except socket.timeout:
         pass
     except Exception as e:
         print("There was an exception while handling {}".format(c['client'].getsockname()))
+        print(c)
         traceback.print_exc()
 
 if __name__ == "__main__":
@@ -212,13 +219,14 @@ if __name__ == "__main__":
                     to_remove.append(k)
             for item in to_remove:
                 print("Removing {}".format(item))
-                if clients[item]['task'] != None:
-                    todos.abort(clients[item]['task'])
+                if clients[item]['task'] != set():
+                    for ident in clients[item]['task']:
+                        todos.abort(ident)
                 del clients[item]
 
             c, addr = s.accept()
             c.settimeout(1)
-            clients[addr] = {'client': c, 'task': None}
+            clients[addr] = {'client': c, 'task': set()}
             print("Connected to {}:{}!".format(addr[0], addr[1]))
         except socket.timeout:
             pass

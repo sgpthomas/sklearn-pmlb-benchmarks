@@ -6,6 +6,9 @@ import trial_msg
 import traceback
 import multiprocessing
 import sys
+import os
+
+import time
 
 from classifiers import AdaBoostClassifier
 from classifiers import BernoulliNB
@@ -22,6 +25,7 @@ from classifiers import RandomForestClassifier
 from classifiers import SGDClassifier
 from classifiers import SVC
 from classifiers import XGBClassifier
+
 classifier_functions = {
     "AdaBoostClassifier": AdaBoostClassifier, # 28
     "BernoulliNB": BernoulliNB, # 140
@@ -46,7 +50,8 @@ def make_parser():
 
     parser.add_argument('-o', "--host", action="store", default=None, type=str)
     parser.add_argument('-p', "--port", action="store", default=3000, type=int)
-    parser.add_argument('--loop', action="store_true")
+    parser.add_argument('--cpu', action="store", default=os.cpu_count(), type=int)
+    parser.add_argument('--timeout', action="store", default=300, type=int)
 
     return parser
 
@@ -64,35 +69,48 @@ def recv_msg(scheduler, size=trial_msg.SIZE):
 
 def expect_msg_type(scheduler, msg_type):
     data = recv_msg(scheduler)
+    if len(data) != 1:
+        raise Exception("Got multiple responses! {}".format(data))
+
+    data = data[0]
     if data['msg_type'] != msg_type:
         raise Exception("Expected msg type '{}' but got '{}'".format(msg_type,
                                                                      data['msg_type']))
 
     return data
 
-def verify(scheduler):
-    msg = {'msg_type': trial_msg.VERIFY}
+def send_expect_msg(scheduler, lock, msg, msg_type):
+    lock.acquire()
     send_msg(scheduler, msg)
-    expect_msg_type(scheduler, trial_msg.SUCCESS)
+    data = expect_msg_type(scheduler, msg_type)
+    lock.release()
+    return data
+
+def verify(scheduler, lock):
+    msg = {'msg_type': trial_msg.VERIFY}
+    send_expect_msg(scheduler, lock, msg, trial_msg.SUCCESS)
     print("Connected!")
 
-def get_trial(scheduler):
+def get_trial(scheduler, lock):
     msg = {'msg_type': trial_msg.TRIAL_REQUEST}
-    send_msg(scheduler, msg)
-    data = expect_msg_type(scheduler, trial_msg.TRIAL_DETAILS)
-    return data['dataset'], data['method'], data['params']
+    # send_msg(scheduler, msg)
+    # data = expect_msg_type(scheduler, trial_msg.TRIAL_DETAILS)
+    data = send_expect_msg(scheduler, lock, msg, trial_msg.TRIAL_DETAILS)
+    return data['id'], data['dataset'], data['method'], data['params']
 
-def send_trial(scheduler, res):
-    packed = trial_msg.serialize(res)
-    send_msg(scheduler, {'msg_type': trial_msg.TRIAL_DONE, 'size': len(packed)})
-    expect_msg_type(scheduler, trial_msg.TRIAL_SEND)
-    scheduler.send(packed)
+def send_trial(scheduler, lock, ident, res):
+    # packed = trial_msg.serialize(res)
+    msg = {'msg_type': trial_msg.TRIAL_DONE,
+           'id': ident,
+           'data': res}
+    # send_msg(scheduler, msg)
+    # expect_msg_type(scheduler, trial_msg.TRIAL_SEND)
+    send_expect_msg(scheduler, lock, msg, trial_msg.SUCCESS)
+    # scheduler.send(packed)
 
-def run_trial(scheduler):
-    dataset, method, params = get_trial(scheduler)
-    print(dataset, method, params)
+def run_trial(scheduler, lock, ident, dataset, method, params):
     res = classifier_functions[method].run(dataset, params)
-    send_trial(scheduler, res)
+    send_trial(scheduler, lock, ident, res)
 
 def terminate(scheduler):
     msg = {'msg_type': trial_msg.TERMINATE}
@@ -109,32 +127,85 @@ if __name__ == "__main__":
     except socket.timeout:
         print("Connection timed out! Is the host correct?")
         exit(-1)
-    verify(scheduler)
 
+    lock = multiprocessing.Lock()
+    verify(scheduler, lock)
+
+    processes = {}
     while True:
         try:
-            p = multiprocessing.Process(target=lambda: run_trial(scheduler))
-            p.start()
-            p.join(300)
+            # spawn new processes if needed
+            while len(processes) < options.cpu:
+                ident, dataset, method, params = get_trial(scheduler, lock)
+                print(ident, dataset, method, params)
+                f = lambda: run_trial(scheduler, lock, ident, dataset, method, params)
+                p = multiprocessing.Process(target=f)
+                p.start()
+                processes[ident] = {'time': 0, 'process': p}
 
-            if p.is_alive():
-                print("Trial timed out! Forcefully terminating!")
-                p.terminate()
-                p.join()
-                send_msg(scheduler, {'msg_type': trial_msg.TRIAL_CANCEL})
-                expect_msg_type(scheduler, trial_msg.SUCCESS)
+            to_remove = []
+            for ident, info in processes.items():
+                # check if process has died on it's own
+                if not info['process'].is_alive():
+                    to_remove.append(ident)
+
+                # check if process has timed out
+                elif info['time'] > options.timeout:
+
+                    if lock.acquire(False):
+                        print("Process {} timed out! Terminating!".format(info['process'].pid))
+                        info['process'].terminate()
+                        info['process'].join()
+                        lock.release()
+                        msg = {'msg_type': trial_msg.TRIAL_CANCEL,
+                            'id': ident}
+                        send_expect_msg(scheduler, lock, msg, trial_msg.SUCCESS)
+                    else:
+                        print("Process {} is communicating!".format(info['process'].pid))
+                        lock.acquire()
+                        lock.release()
+
+                    to_remove.append(ident)
+
+
+                # increment timer
+                info['time'] += 1
+
+            # remove all dead or timed out processes
+            for ident in to_remove:
+                del processes[ident]
+
+            sys.stdout.flush()
+            time.sleep(1)
         except KeyboardInterrupt:
             print("Stopping!")
             break
-        except Exception as e:
-            send_msg(scheduler, {'msg_type': trial_msg.TRIAL_CANCEL})
-            expect_msg_type(scheduler, trial_msg.SUCCESS)
-            print("Something broke! Skipping this trial on this client!")
-            traceback.print_exc()
-        finally:
-            sys.stdout.flush()
-            if not options.loop:
-                break
+
+    # while True:
+    #     # the cancel message needs to send the id that failed
+    #     try:
+    #         p = multiprocessing.Process(target=lambda: run_trial(scheduler))
+    #         p.start()
+    #         p.join(300)
+
+    #         if p.is_alive():
+    #             print("Trial timed out! Forcefully terminating!")
+    #             p.terminate()
+    #             p.join()
+    #             send_msg(scheduler, {'msg_type': trial_msg.TRIAL_CANCEL})
+    #             expect_msg_type(scheduler, trial_msg.SUCCESS)
+    #     except KeyboardInterrupt:
+    #         print("Stopping!")
+    #         break
+    #     except Exception as e:
+    #         send_msg(scheduler, {'msg_type': trial_msg.TRIAL_CANCEL})
+    #         expect_msg_type(scheduler, trial_msg.SUCCESS)
+    #         print("Something broke! Skipping this trial on this client!")
+    #         traceback.print_exc()
+    #     finally:
+    #         sys.stdout.flush()
+    #         if not options.loop:
+    #             break
 
     terminate(scheduler)
     scheduler.close()
