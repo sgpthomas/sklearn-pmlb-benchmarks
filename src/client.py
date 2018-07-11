@@ -131,6 +131,8 @@ if __name__ == "__main__":
     lock = multiprocessing.Lock()
     verify(scheduler, lock)
 
+    print("Using {} cpus".format(options.cpu))
+
     processes = {}
     while True:
         try:
