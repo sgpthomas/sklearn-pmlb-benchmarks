@@ -5,7 +5,7 @@ cd `dirname $0`
 case $D3MTYPE in
     client)
         echo "Running as client"
-        ./src/client.py -p $D3MPORT -o $D3MHOST
+        ./src/client.py -p $D3MPORT -o $D3MHOST --timeout $D3MTIMEOUT
         ;;
     default_scheduler)
         echo "Running as scheduler for default parameters settings"
