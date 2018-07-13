@@ -128,6 +128,8 @@ if __name__ == "__main__":
         print("Connection timed out! Is the host correct?")
         exit(-1)
 
+    scheduler.settimeout(options.timeout)
+
     lock = multiprocessing.Lock()
     verify(scheduler, lock)
 
@@ -169,7 +171,6 @@ if __name__ == "__main__":
 
                     to_remove.append(ident)
 
-
                 # increment timer
                 info['time'] += 1
 
@@ -179,35 +180,15 @@ if __name__ == "__main__":
 
             sys.stdout.flush()
             time.sleep(1)
+        except socket.timeout:
+            print("Socket timed out! Reconnecting!")
+            terminate(scheduler)
+            scheduler.close()
+            scheduler = connect_to_server(options.host, options.port)
+            verify(scheduler, lock)
         except KeyboardInterrupt:
             print("Stopping!")
             break
-
-    # while True:
-    #     # the cancel message needs to send the id that failed
-    #     try:
-    #         p = multiprocessing.Process(target=lambda: run_trial(scheduler))
-    #         p.start()
-    #         p.join(300)
-
-    #         if p.is_alive():
-    #             print("Trial timed out! Forcefully terminating!")
-    #             p.terminate()
-    #             p.join()
-    #             send_msg(scheduler, {'msg_type': trial_msg.TRIAL_CANCEL})
-    #             expect_msg_type(scheduler, trial_msg.SUCCESS)
-    #     except KeyboardInterrupt:
-    #         print("Stopping!")
-    #         break
-    #     except Exception as e:
-    #         send_msg(scheduler, {'msg_type': trial_msg.TRIAL_CANCEL})
-    #         expect_msg_type(scheduler, trial_msg.SUCCESS)
-    #         print("Something broke! Skipping this trial on this client!")
-    #         traceback.print_exc()
-    #     finally:
-    #         sys.stdout.flush()
-    #         if not options.loop:
-    #             break
 
     terminate(scheduler)
     scheduler.close()
