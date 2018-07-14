@@ -118,6 +118,7 @@ def handle_client(clients, key):
         for data in data:
             # switch based on msg_type
             msg_type = data['msg_type']
+            c['timeout'] = 0
             if msg_type == trial_msg.VERIFY:
                 send_msg(c['client'], {'msg_type': trial_msg.SUCCESS})
 
@@ -168,7 +169,7 @@ def handle_client(clients, key):
                 print("Unknown msg type: {}!".format(msg_type))
                 send_msg(c['client'], {'msg_type': trial_msg.INVALID})
     except socket.timeout:
-        pass
+        clients[key]['timeout'] += 1
     except Exception as e:
         print("There was an exception while handling {}".format(c['client'].getsockname()))
         print(c)
@@ -215,7 +216,9 @@ if __name__ == "__main__":
         try:
             to_remove = []
             for k in clients:
-                if handle_client(clients, k) != None:
+                if clients[k]['timeout'] > 300:
+                    to_remove.append(k)
+                elif handle_client(clients, k) != None:
                     to_remove.append(k)
             for item in to_remove:
                 print("Removing {}".format(item))
@@ -226,7 +229,7 @@ if __name__ == "__main__":
 
             c, addr = s.accept()
             c.settimeout(1)
-            clients[addr] = {'client': c, 'task': set()}
+            clients[addr] = {'client': c, 'task': set(), 'timeout': 0}
             print("Connected to {}:{}!".format(addr[0], addr[1]))
         except socket.timeout:
             pass
