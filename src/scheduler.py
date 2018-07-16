@@ -10,6 +10,7 @@ import os
 import sys
 import pandas as pd
 from time import sleep
+from multiprocessing import Process, Queue
 
 from pmlb import classification_dataset_names
 from todo import TodoList
@@ -61,6 +62,7 @@ classifier_functions = {
 # todos = {}
 todos = TodoList()
 resultdir = "."
+c_queue = None
 count = 0
 total = 0
 
@@ -79,18 +81,8 @@ def make_parser():
 
     return parser
 
-# def completed(resultdir, include_in_progress=True):
-#     files = []
-#     if include_in_progress:
-#         files = glob.glob("{}/*.pkl".format(resultdir))
-#     else:
-#         files = glob.glob("{}/final-*.pkl".format(resultdir))
-#     rmext = lambda s: s[:-4]
-#     f = lambda s: tuple((s.split('/')[1]).split('--')[1:3])
-#     return list(map(f, map(rmext, files)))
-
-def commit_result(res, ident):
-    pd.DataFrame(res).to_pickle("{}/tmp-{}.pkl".format(resultdir, ident))
+# def commit_result(res, ident):
+#     pd.DataFrame(res).to_pickle("{}/tmp-{}.pkl".format(resultdir, ident))
 
 def start_server(port):
     s = socket.socket()
@@ -104,6 +96,17 @@ def stop_server(server):
 
 def send_msg(client, msg):
     client.send(trial_msg.serialize(msg))
+
+def committer():
+    while True:
+        item = c_queue.get()
+        if item == None:
+            print("Terminating committer!")
+            break
+
+        res, ident, remaining, percent = item
+        pd.DataFrame(res).to_pickle("{}/tmp-{}.pkl".format(resultdir, ident))
+        print("Commited #{} ({} remaining, {:.2%} completed)".format(ident, remaining, percent))
 
 def handle_client(clients, key):
     try:
@@ -139,26 +142,26 @@ def handle_client(clients, key):
                                     'dataset': dataset,
                                     'method': method,
                                     'params': params})
-                print("Handed out #{}: {} {} {}".format(ident, dataset, method, params))
+                print("Handed out #{}: {} {} {}".format(ident, dataset, method, list(params.values())))
 
             elif msg_type == trial_msg.TRIAL_DONE:
                 print("{} finished!".format(c['client'].getpeername()))
                 ident = data['id']
                 trial_result = data['data']
-                # size = data['size']
-                # send_msg(c['client'], {'msg_type': trial_msg.TRIAL_SEND})
-                # trial_result = trial_msg.deserialize(c['client'].recv(trial_msg.SIZE))[0]
-                commit_result(trial_result, ident)
+
                 todos.complete(ident)
+                c_queue.put((trial_result, ident, len(todos.remaining()), len(todos.completed()) / todos.size()))
+                # commit_result(trial_result, ident)
+                # print("Commited #{} (remaining: {})".format(ident, len(todos.remaining())))
+
                 send_msg(c['client'], {'msg_type': trial_msg.SUCCESS})
-                print("Commited #{} (remaining: {})".format(ident, len(todos.remaining())))
                 c['task'].remove(ident)
 
             elif msg_type == trial_msg.TRIAL_CANCEL:
                 print("{} aborted!".format(c['client'].getpeername()))
                 ident = data['id']
                 todos.cancel(ident)
-                print("Aborting #{} (remaining: {})".format(ident, len(todos.remaining())))
+                print("Aborting #{} ({} remaining)".format(ident, len(todos.remaining())))
                 send_msg(c['client'], {'msg_type': trial_msg.SUCCESS})
                 c['task'].remove(ident)
 
@@ -207,6 +210,10 @@ if __name__ == "__main__":
     total = todos.size()
     print("found {} incomplete trials!".format(len(todos.remaining())), flush=True)
 
+    c_queue = Queue()
+    committer_p = Process(target=committer)
+    committer_p.start()
+
     clients = {}
     s = start_server(options.port)
     s.settimeout(1)
@@ -228,13 +235,15 @@ if __name__ == "__main__":
                 del clients[item]
 
             c, addr = s.accept()
-            c.settimeout(1)
+            c.settimeout(0.2)
             clients[addr] = {'client': c, 'task': set(), 'timeout': 0}
             print("Connected to {}:{}!".format(addr[0], addr[1]))
         except socket.timeout:
             pass
         except KeyboardInterrupt:
             print("Shutting down server!")
+            c_queue.put(None)
+            committer_p.join()
             print("Aborting progress on:")
             for item in todos.in_progress():
                 print(" [-] {}".format(item))
@@ -245,9 +254,5 @@ if __name__ == "__main__":
     for item in todos.in_progress():
         print(" [-] {}".format(item), flush=True)
 
-    print("Keeping container open")
-    while True:
-        try:
-            sleep(1)
-        except KeyboardInterrupt:
-            break
+    c_queue.put(None)
+    committer_p.join()

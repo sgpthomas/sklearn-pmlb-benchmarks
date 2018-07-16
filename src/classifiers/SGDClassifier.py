@@ -20,7 +20,7 @@ def get_pipeline_parameters():
     # l1_ratio_values = [0., 0.1, 0.15, 0.25, 0.5, 0.75, 0.9, 1.]
     l1_ratio_values = [0., 0.25, 0.5, 0.75, 1.]
     # eta0_values = [0.0, 0.01, 0.1, 0.5, 1., 10., 50., 100.]
-    eta0_values = [0.0, 0.1, 1., 10., 100.]
+    eta0_values = [0.01, 0.1, 1., 10., 100.]
     # power_t_values = [0., 0.1, 0.5, 1., 10., 50., 100.]
     power_t_values = [0., 0.1, 1., 10., 100.]
     random_state = [324089]
