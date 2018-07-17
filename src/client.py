@@ -112,7 +112,8 @@ def run_trial(scheduler, lock, ident, dataset, method, params):
     try:
         res = classifier_functions[method].run(dataset, params)
         send_trial(scheduler, lock, ident, res)
-    except:
+    except Exception as e:
+        traceback.print_exc()
         msg = {'msg_type': trial_msg.TRIAL_CANCEL,
                 'id': ident}
         send_expect_msg(scheduler, lock, msg, trial_msg.SUCCESS)
