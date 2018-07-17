@@ -104,25 +104,25 @@ def committer():
 
         res, ident, remaining, percent = item
         pd.DataFrame(res).to_pickle("{}/tmp-{}.pkl".format(resultdir, ident))
-        print("Commited #{} ({} remaining, {:.4%} completed)".format(ident, remaining, percent))
+        print("[*] Commited #{} ({} remaining, {:.4%} completed)".format(ident, remaining, percent))
 
 MAX_TIMEOUT = 300
 def handler(pid, client, todo_queue, total):
     hostname, port = client.getsockname()
     timeout = 0
     owned_tasks = set()
-    print("Started {}:{}".format(hostname, port))
+    print("Started [{}] : {}".format(pid, hostname))
     client.settimeout(1)
     while True:
         try:
             if timeout > MAX_TIMEOUT:
-                print("{}:{} timed out!".format(hostname, port))
+                print("[{}] {} timed out!".format(pid, hostname))
                 break
 
             data = trial_msg.deserialize(client.recv(trial_msg.SIZE))
 
             if data == None:
-                print("{}:{} died! Removing!".format(hostname, port))
+                print("[{}] {} died! Removing!".format(pid, hostname))
                 break
 
             for data in data:
@@ -147,12 +147,12 @@ def handler(pid, client, todo_queue, total):
                            'method': method,
                            'params': params}
                     send_msg(client, msg)
-                    print("[*] -> [{}] : Handed out #{}: {} {} {}".format(port, ident, dataset, method, list(params.values())))
+                    print("[*] -> [{}] : Handed out #{}: {} {} {}".format(pid, ident, dataset, method, list(params.values())))
 
                 elif msg_type == trial_msg.TRIAL_DONE:
                     ident = data['id']
                     trial_result = data['data']
-                    print("[*] <- [{}] : Finished #{}".format(port, ident))
+                    print("[*] <- [{}] : Finished #{}".format(pid, ident))
 
                     qsize = todo_queue.qsize()
                     commit_queue.put((trial_result, ident, qsize, 1. - (qsize / total)))
@@ -162,16 +162,16 @@ def handler(pid, client, todo_queue, total):
 
                 elif msg_type == trial_msg.TRIAL_CANCEL:
                     ident = data['id']
-                    print("[*] <- [{}] : Aborted #{}!".format(port, ident))
+                    print("[*] <- [{}] : Aborted #{}!".format(pid, ident))
                     send_msg(client, {'msg_type': trial_msg.SUCCESS})
                     owned_tasks.remove(ident)
 
                 elif msg_type == trial_msg.TERMINATE:
-                    print("[*] <- [{}] : Terminated!".format(port))
+                    print("[*] <- [{}] : Terminated!".format(pid))
                     raise Death
 
                 else:
-                    print("[*] <- [{}] : Unknown msg type: {}".format(port, msg_type))
+                    print("[*] <- [{}] : Unknown msg type: {}".format(pid, msg_type))
                     raise Death
 
         except socket.timeout:
@@ -179,7 +179,7 @@ def handler(pid, client, todo_queue, total):
         except Death:
             break
         except Exception as e:
-            print("Something broke on {}:{}!".format(hostname, port))
+            print("Something broke on [{}] {}!".format(pid, hostname))
             traceback.print_exc()
 
     client.close()
@@ -219,15 +219,6 @@ if __name__ == "__main__":
                 ident += 1
     total = ident
     print("found {} incomplete trials!".format(total, flush=True))
-    # while True:
-    #     ident, q_name, q_key, q_x = todo_queue.get(True, 1)
-    #     t_name, t_key, t_x = todos.todos[ident]['item']
-    #     if (q_name != t_name) or (q_key != t_key) or (q_x != t_x):
-    #         print(ident)
-    #     else:
-    #         print('.', end='')
-
-    # exit(0)
 
     commit_queue = Queue()
     committer_p = Process(target=committer, args=(commit_queue,))
