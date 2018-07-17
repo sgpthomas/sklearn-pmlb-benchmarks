@@ -109,8 +109,13 @@ def send_trial(scheduler, lock, ident, res):
     # scheduler.send(packed)
 
 def run_trial(scheduler, lock, ident, dataset, method, params):
-    res = classifier_functions[method].run(dataset, params)
-    send_trial(scheduler, lock, ident, res)
+    try:
+        res = classifier_functions[method].run(dataset, params)
+        send_trial(scheduler, lock, ident, res)
+    except:
+        msg = {'msg_type': trial_msg.TRIAL_CANCEL,
+                'id': ident}
+        send_expect_msg(scheduler, lock, msg, trial_msg.SUCCESS)
 
 def terminate(scheduler):
     msg = {'msg_type': trial_msg.TERMINATE}
@@ -162,7 +167,7 @@ if __name__ == "__main__":
                         info['process'].join()
                         lock.release()
                         msg = {'msg_type': trial_msg.TRIAL_CANCEL,
-                            'id': ident}
+                               'id': ident}
                         send_expect_msg(scheduler, lock, msg, trial_msg.SUCCESS)
                     else:
                         print("Process {} is communicating!".format(info['process'].pid))

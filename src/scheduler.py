@@ -5,12 +5,14 @@ import argparse
 import trial_msg
 import itertools
 from pathlib import Path
+
 import traceback
 import os
 import sys
 import pandas as pd
 from time import sleep
 from multiprocessing import Process, Queue
+import queue
 
 from pmlb import classification_dataset_names
 from todo import TodoList
@@ -59,12 +61,9 @@ classifier_functions = {
     "XGBClassifier": XGBClassifier # 30492
 }
 
-# todos = {}
-todos = TodoList()
+class Death(Exception): pass
+
 resultdir = "."
-c_queue = None
-count = 0
-total = 0
 
 def flatten(l):
     return [item for sublist in l for item in sublist]
@@ -75,14 +74,11 @@ def make_parser():
 
     parser.add_argument('resultdir', action="store")
     parser.add_argument('-p', '--port', action="store", default=3000, type=int)
-    parser.add_argument('-m', '--max-connections', action="store", default=10, type=int)
+    parser.add_argument('-m', '--max-connections', action="store", default=100, type=int)
     parser.add_argument('--default', action="store_true")
     parser.add_argument('--resume', action="store_true")
 
     return parser
-
-# def commit_result(res, ident):
-#     pd.DataFrame(res).to_pickle("{}/tmp-{}.pkl".format(resultdir, ident))
 
 def start_server(port):
     s = socket.socket()
@@ -91,99 +87,109 @@ def start_server(port):
     print("Started server at {}:{}".format(s.getsockname()[0], port))
     return s
 
+
 def stop_server(server):
     server.close()
 
 def send_msg(client, msg):
+
     client.send(trial_msg.serialize(msg))
 
 def committer():
     while True:
-        item = c_queue.get()
+        item = commit_queue.get()
         if item == None:
             print("Terminating committer!")
             break
 
         res, ident, remaining, percent = item
         pd.DataFrame(res).to_pickle("{}/tmp-{}.pkl".format(resultdir, ident))
-        print("Commited #{} ({} remaining, {:.2%} completed)".format(ident, remaining, percent))
+        print("Commited #{} ({} remaining, {:.4%} completed)".format(ident, remaining, percent))
 
-def handle_client(clients, key):
-    try:
-        c = clients[key]
-        data = trial_msg.deserialize(c['client'].recv(trial_msg.SIZE))
+MAX_TIMEOUT = 300
+def handler(pid, client, todo_queue, total):
+    hostname, port = client.getsockname()
+    timeout = 0
+    owned_tasks = set()
+    print("Started {}:{}".format(hostname, port))
+    client.settimeout(1)
+    while True:
+        try:
+            if timeout > MAX_TIMEOUT:
+                print("{}:{} timed out!".format(hostname, port))
+                break
 
-        # check if client has died
-        if data == None:
-            print("Received 'None' from {}. Marked for removal!".format(c['client'].getsockname()[0]))
-            return 1
+            data = trial_msg.deserialize(client.recv(trial_msg.SIZE))
 
-        for data in data:
-            # switch based on msg_type
-            msg_type = data['msg_type']
-            c['timeout'] = 0
-            if msg_type == trial_msg.VERIFY:
-                send_msg(c['client'], {'msg_type': trial_msg.SUCCESS})
+            if data == None:
+                print("{}:{} died! Removing!".format(hostname, port))
+                break
 
-            elif msg_type == trial_msg.TRIAL_REQUEST:
-                ident, task = None, None
-                item = todos.next()
+            for data in data:
+                timeout = 0
+                msg_type = data['msg_type']
+                if msg_type == trial_msg.VERIFY:
+                    send_msg(client, {'msg_type': trial_msg.SUCCESS})
 
-                if item == None:
-                    print("No more trials!")
-                    send_msg(c['client'], {'msg_type': trial_msg.TERMINATE})
-                    return
+                elif msg_type == trial_msg.TRIAL_REQUEST:
+                    ident, dataset, method, params = None, None, None, None
+                    try:
+                        ident, dataset, method, params = todo_queue.get(True, 1)
+                    except queue.Empty:
+                        print("No more trials!")
+                        send_msg(client, {'msg_type': trial_msg.TERMINATE})
+                        break
 
-                ident, task = item
-                dataset, method, params = task
-                c['task'].add(ident)
-                send_msg(c['client'], {'msg_type': trial_msg.TRIAL_DETAILS,
-                                    'id': ident,
-                                    'dataset': dataset,
-                                    'method': method,
-                                    'params': params})
-                print("Handed out #{}: {} {} {}".format(ident, dataset, method, list(params.values())))
+                    owned_tasks.add(ident)
+                    msg = {'msg_type': trial_msg.TRIAL_DETAILS,
+                           'id': ident,
+                           'dataset': dataset,
+                           'method': method,
+                           'params': params}
+                    send_msg(client, msg)
+                    print("[*] -> [{}] : Handed out #{}: {} {} {}".format(port, ident, dataset, method, list(params.values())))
 
-            elif msg_type == trial_msg.TRIAL_DONE:
-                print("{} finished!".format(c['client'].getpeername()))
-                ident = data['id']
-                trial_result = data['data']
+                elif msg_type == trial_msg.TRIAL_DONE:
+                    ident = data['id']
+                    trial_result = data['data']
+                    print("[*] <- [{}] : Finished #{}".format(port, ident))
 
-                todos.complete(ident)
-                c_queue.put((trial_result, ident, len(todos.remaining()), len(todos.completed()) / todos.size()))
-                # commit_result(trial_result, ident)
-                # print("Commited #{} (remaining: {})".format(ident, len(todos.remaining())))
+                    qsize = todo_queue.qsize()
+                    commit_queue.put((trial_result, ident, qsize, 1. - (qsize / total)))
 
-                send_msg(c['client'], {'msg_type': trial_msg.SUCCESS})
-                c['task'].remove(ident)
+                    send_msg(client, {'msg_type': trial_msg.SUCCESS})
+                    owned_tasks.remove(ident)
 
-            elif msg_type == trial_msg.TRIAL_CANCEL:
-                print("{} aborted!".format(c['client'].getpeername()))
-                ident = data['id']
-                todos.cancel(ident)
-                print("Aborting #{} ({} remaining)".format(ident, len(todos.remaining())))
-                send_msg(c['client'], {'msg_type': trial_msg.SUCCESS})
-                c['task'].remove(ident)
+                elif msg_type == trial_msg.TRIAL_CANCEL:
+                    ident = data['id']
+                    print("[*] <- [{}] : Aborted #{}!".format(port, ident))
+                    send_msg(client, {'msg_type': trial_msg.SUCCESS})
+                    owned_tasks.remove(ident)
 
-            elif msg_type == trial_msg.TERMINATE:
-                return 1
+                elif msg_type == trial_msg.TERMINATE:
+                    print("[*] <- [{}] : Terminated!".format(port))
+                    raise Death
 
-            else:
-                print("Unknown msg type: {}!".format(msg_type))
-                send_msg(c['client'], {'msg_type': trial_msg.INVALID})
-    except socket.timeout:
-        clients[key]['timeout'] += 1
-    except Exception as e:
-        print("There was an exception while handling {}".format(c['client'].getsockname()))
-        print(c)
-        traceback.print_exc()
+                else:
+                    print("[*] <- [{}] : Unknown msg type: {}".format(port, msg_type))
+                    raise Death
+
+        except socket.timeout:
+            timeout += 1
+        except Death:
+            break
+        except Exception as e:
+            print("Something broke on {}:{}!".format(hostname, port))
+            traceback.print_exc()
+
+    client.close()
+    print("[*] Process {} died!".format(pid), flush=True)
 
 if __name__ == "__main__":
     options = make_parser().parse_args()
 
     try:
         os.mkdir(options.resultdir)
-        # print(options.resultdir)
     except OSError:
         pass
 
@@ -191,68 +197,56 @@ if __name__ == "__main__":
 
     # gather todos
     print("Gathering todos...", end='', flush=True)
+    todo_queue = Queue()
+    completed = set()
+    if options.resume:
+        p = Path(resultdir)
+        ids = list(map(lambda s: int(s.stem.split('-')[1]), p.glob("tmp-*.pkl")))
+        for i in ids:
+            completed.add(i)
+
     if options.default:
         params = {key: [{}] for key in classifier_functions}
     else:
         params = {key: item.get_pipeline_parameters()
                   for key, item in classifier_functions.items()}
+    ident = 0
     for name in classification_dataset_names:
         for key in sorted(params):
             for x in params[key]:
-                todos.add((name, key, x))
+                if ident not in completed:
+                    todo_queue.put((ident, name, key, x))
+                ident += 1
+    total = ident
+    print("found {} incomplete trials!".format(total, flush=True))
+    # while True:
+    #     ident, q_name, q_key, q_x = todo_queue.get(True, 1)
+    #     t_name, t_key, t_x = todos.todos[ident]['item']
+    #     if (q_name != t_name) or (q_key != t_key) or (q_x != t_x):
+    #         print(ident)
+    #     else:
+    #         print('.', end='')
 
-    if options.resume:
-        p = Path(resultdir)
-        ids = list(map(lambda s: int(s.stem.split('-')[1]), p.glob("tmp-*.pkl")))
-        for i in ids:
-            todos.complete(i)
+    # exit(0)
 
-    total = todos.size()
-    print("found {} incomplete trials!".format(len(todos.remaining())), flush=True)
-
-    c_queue = Queue()
-    committer_p = Process(target=committer)
+    commit_queue = Queue()
+    committer_p = Process(target=committer, args=(commit_queue,))
     committer_p.start()
 
-    clients = {}
     s = start_server(options.port)
-    s.settimeout(1)
     print("Starting to listen...", flush=True)
     s.listen(options.max_connections)
-    while len(todos.completed()) != todos.size():
-        try:
-            to_remove = []
-            for k in clients:
-                if clients[k]['timeout'] > 300:
-                    to_remove.append(k)
-                elif handle_client(clients, k) != None:
-                    to_remove.append(k)
-            for item in to_remove:
-                print("Removing {}".format(item))
-                if clients[item]['task'] != set():
-                    for ident in clients[item]['task']:
-                        todos.abort(ident)
-                del clients[item]
-
+    processes = {}
+    try:
+        while True:
             c, addr = s.accept()
-            c.settimeout(0.2)
-            clients[addr] = {'client': c, 'task': set(), 'timeout': 0}
-            print("Connected to {}:{}!".format(addr[0], addr[1]))
-        except socket.timeout:
-            pass
-        except KeyboardInterrupt:
-            print("Shutting down server!")
-            c_queue.put(None)
-            committer_p.join()
-            print("Aborting progress on:")
-            for item in todos.in_progress():
-                print(" [-] {}".format(item))
-            s.close()
-            exit(0)
-        sys.stdout.flush()
-    print("No more todos!", flush=True)
-    for item in todos.in_progress():
-        print(" [-] {}".format(item), flush=True)
+            p = Process(target=handler, args=(len(processes.keys()), c, todo_queue, total))
+            p.start()
+            processes[addr] = p
+    except KeyboardInterrupt:
+        print("Shutting down server!")
 
-    c_queue.put(None)
+    commit_queue.put(None)
     committer_p.join()
+    for p in processes.values():
+        p.join()
