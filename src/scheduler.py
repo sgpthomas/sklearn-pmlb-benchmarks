@@ -94,7 +94,7 @@ def stop_server(server):
 def send_msg(client, msg):
     client.send(trial_msg.serialize(msg))
 
-def committer():
+def committer(commit_queue):
     while True:
         try:
             item = commit_queue.get()
