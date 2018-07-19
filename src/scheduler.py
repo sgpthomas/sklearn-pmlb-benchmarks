@@ -95,7 +95,7 @@ def send_msg(client, msg):
 
     client.send(trial_msg.serialize(msg))
 
-def committer():
+def committer(commit_queue):
     while True:
         item = commit_queue.get()
         if item == None:
@@ -106,7 +106,7 @@ def committer():
         pd.DataFrame(res).to_pickle("{}/tmp-{}.pkl".format(resultdir, ident))
         print("[*] Commited #{} ({} remaining, {:.4%} completed)".format(ident, remaining, percent))
 
-MAX_TIMEOUT = 300
+MAX_TIMEOUT = 1000
 def handler(pid, client, todo_queue, total):
     hostname, port = client.getsockname()
     timeout = 0
@@ -218,7 +218,7 @@ if __name__ == "__main__":
                     todo_queue.put((ident, name, key, x))
                 ident += 1
     total = ident
-    print("found {} incomplete trials!".format(total, flush=True))
+    print("found {} incomplete trials!".format(todo_queue.qsize(), flush=True))
 
     commit_queue = Queue()
     committer_p = Process(target=committer, args=(commit_queue,))
