@@ -92,19 +92,21 @@ def stop_server(server):
     server.close()
 
 def send_msg(client, msg):
-
     client.send(trial_msg.serialize(msg))
 
 def committer(commit_queue):
     while True:
-        item = commit_queue.get()
-        if item == None:
-            print("Terminating committer!")
-            break
+        try:
+            item = commit_queue.get()
+            if item == None:
+                print("Terminating committer!")
+                break
 
-        res, ident, remaining, percent = item
-        pd.DataFrame(res).to_pickle("{}/tmp-{}.pkl".format(resultdir, ident))
-        print("[*] Commited #{} ({} remaining, {:.4%} completed)".format(ident, remaining, percent))
+            res, ident, remaining, percent = item
+            pd.DataFrame(res).to_pickle("{}/tmp-{}.pkl".format(resultdir, ident))
+            print("[*] Commited #{} ({} remaining, {:.4%} completed)".format(ident, remaining, percent))
+        except:
+            traceback.print_exc()
 
 MAX_TIMEOUT = 1000
 def handler(pid, client, todo_queue, total):
