@@ -50,7 +50,7 @@ def make_parser():
 
     parser.add_argument('-o', "--host", action="store", default=None, type=str)
     parser.add_argument('-p', "--port", action="store", default=3000, type=int)
-    parser.add_argument('--cpu', action="store", default=os.cpu_count(), type=int)
+    parser.add_argument('--cpu', action="store", default=max(int(os.cpu_count() / 2), 1), type=int)
     parser.add_argument('--timeout', action="store", default=300, type=int)
 
     return parser
