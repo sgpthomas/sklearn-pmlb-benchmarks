@@ -87,7 +87,6 @@ def start_server(port):
     print("Started server at {}:{}".format(s.getsockname()[0], port))
     return s
 
-
 def stop_server(server):
     server.close()
 
@@ -102,8 +101,8 @@ def committer(commit_queue):
                 print("Terminating committer!")
                 break
 
-            res, ident, remaining, percent = item
-            pd.DataFrame(res).to_pickle("{}/tmp-{}.pkl".format(resultdir, ident))
+            res, prefix, ident, remaining, percent = item
+            pd.DataFrame(res).to_pickle("{}/{}-{}.pkl".format(resultdir, prefix, ident))
             print("[*] Commited #{} ({} remaining, {:.4%} completed)".format(ident, remaining, percent))
         except:
             traceback.print_exc()
@@ -157,14 +156,23 @@ def handler(pid, client, todo_queue, total):
                     print("[*] <- [{}] : Finished #{}".format(pid, ident))
 
                     qsize = todo_queue.qsize()
-                    commit_queue.put((trial_result, ident, qsize, 1. - (qsize / total)))
+                    commit_queue.put((trial_result, 'tmp', ident, qsize, 1. - (qsize / total)))
 
                     send_msg(client, {'msg_type': trial_msg.SUCCESS})
                     owned_tasks.remove(ident)
 
                 elif msg_type == trial_msg.TRIAL_CANCEL:
                     ident = data['id']
-                    print("[*] <- [{}] : Aborted #{}!".format(pid, ident))
+                    reason = data['reason']
+                    print("[*] <- [{}] : Aborted #{} b/c {}!".format(pid, ident, reason))
+
+                    qsize = todo_queue.qsize()
+                    trial_result = {
+                        'id': [ident],
+                        'reason': [reason]
+                    }
+                    commit_queue.put((trial_result, 'bad', ident, qsize, 1. - (qsize / total)))
+
                     send_msg(client, {'msg_type': trial_msg.SUCCESS})
                     owned_tasks.remove(ident)
 
@@ -203,7 +211,7 @@ if __name__ == "__main__":
     completed = set()
     if options.resume:
         p = Path(resultdir)
-        ids = list(map(lambda s: int(s.stem.split('-')[1]), p.glob("tmp-*.pkl")))
+        ids = list(map(lambda s: int(s.stem.split('-')[1]), p.glob("*.pkl")))
         for i in ids:
             completed.add(i)
 
@@ -220,7 +228,7 @@ if __name__ == "__main__":
                     todo_queue.put((ident, name, key, x))
                 ident += 1
     total = ident
-    print("found {} incomplete trials!".format(total, flush=True))
+    print("found {} incomplete trials!".format(todo_queue.qsize(), flush=True))
 
     commit_queue = Queue()
     committer_p = Process(target=committer, args=(commit_queue,))

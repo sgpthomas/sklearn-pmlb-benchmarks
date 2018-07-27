@@ -93,8 +93,6 @@ def verify(scheduler, lock):
 
 def get_trial(scheduler, lock):
     msg = {'msg_type': trial_msg.TRIAL_REQUEST}
-    # send_msg(scheduler, msg)
-    # data = expect_msg_type(scheduler, trial_msg.TRIAL_DETAILS)
     data = send_expect_msg(scheduler, lock, msg, trial_msg.TRIAL_DETAILS)
     return data['id'], data['dataset'], data['method'], data['params']
 
@@ -103,19 +101,18 @@ def send_trial(scheduler, lock, ident, res):
     msg = {'msg_type': trial_msg.TRIAL_DONE,
            'id': ident,
            'data': res}
-    # send_msg(scheduler, msg)
-    # expect_msg_type(scheduler, trial_msg.TRIAL_SEND)
     send_expect_msg(scheduler, lock, msg, trial_msg.SUCCESS)
-    # scheduler.send(packed)
 
 def run_trial(scheduler, lock, ident, dataset, method, params):
     try:
         res = classifier_functions[method].run(dataset, params)
         send_trial(scheduler, lock, ident, res)
     except Exception as e:
+        print(ident)
         traceback.print_exc()
         msg = {'msg_type': trial_msg.TRIAL_CANCEL,
-                'id': ident}
+                'id': ident,
+               'reason': 'Exception: {}'.format(str(e))}
         send_expect_msg(scheduler, lock, msg, trial_msg.SUCCESS)
 
 def terminate(scheduler):
@@ -168,7 +165,8 @@ if __name__ == "__main__":
                         info['process'].join()
                         lock.release()
                         msg = {'msg_type': trial_msg.TRIAL_CANCEL,
-                               'id': ident}
+                               'id': ident,
+                               'reason': 'Timed out!'}
                         send_expect_msg(scheduler, lock, msg, trial_msg.SUCCESS)
                     else:
                         print("Process {} is communicating!".format(info['process'].pid))
