@@ -107,7 +107,7 @@ def committer(commit_queue):
         except:
             traceback.print_exc()
 
-MAX_TIMEOUT = 300
+MAX_TIMEOUT = 1000
 def handler(pid, client, todo_queue, total):
     hostname, port = client.getsockname()
     timeout = 0
