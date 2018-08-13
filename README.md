@@ -42,13 +42,13 @@ Because all the communication is client driven, the scheduler simply has to resp
 Below is a list of all types of messages and how the scheduler responds to each.
 
 ### Message Types
-| Client's Request | Server's Response |
--------------------------------------------------
-| `verify`                              | `success`                                                        |
-| `trial request`                       | get item from the top of the todo queue and send `trial details` |
-| `trial done` (payload= trial results) | commit payload and confirm with `success`                        |
-| `trial cancel` (payload= id#)         | commit file for id# with reason for failure                      |
-| `terminate`                           | stop handler for this client                                     |
+ | Client's Request | Server's Response |
+ |------------------|-------------------|
+ | `verify`                              | `success`                                                        |
+ | `trial request`                       | get item from the top of the todo queue and send `trial details` |
+ | `trial done` (payload= trial results) | commit payload and confirm with `success`                        |
+ | `trial cancel` (payload= id#)         | commit file for id# with reason for failure                      |
+ | `terminate`                           | stop handler for this client                                     |
 
 ## Client
 
