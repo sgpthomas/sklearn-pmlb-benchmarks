@@ -72,11 +72,17 @@ I will walk through creating an AMIs, security groups, configuring spot fleets, 
 
 ### Creating an AMI
 Once you get to the EC2 home screen, navigate to 'Instances' on the sidebar, and click 'Launch Instance'.
+
+![Launch Instance](.aws-tutorial/launch-instance.png)
+
 You then have to choose a base-OS for your AMI. I chose the Ubuntu 16.04 image because I'm very comfortable with Ubuntu.
 Choose whatever are you comfortable with. This is will be a temporary machine so you can just choose the t2.micro instance type.
 Then click 'Review and Launch'. Now we want to edit the security groups so click 'Edit security groups'. For now just make a
 new security group and call it something you'll remember. Add a SSH connection wiht your IP address so that you can ssh into
 this machine. Later we'll edit this security group to all communication between the clients and the server.
+
+![Create security group](.aws-tutorial/create-security-groups.png)
+
 With this done, we are ready to launch. After clicking launch, you'll see a window asking about a KeyPair. If you don't know what this is
 or haven't done it before, select 'Create a new key pair' from the dropdown and give it a name. Download the .pem file somewhere you'll remember.
 (A good place is `~/.ssh`). You will need this file to connect to the machine. If you already have a key pair, you can use that one instead.
@@ -106,7 +112,9 @@ You can terminate the instance. If you need to update this image for some reason
 ### Editing our Security Group
 We want to edit the security group we made earlier to allow TCP traffic between are instances. To do this find 'Security Groups' in the sidebar.
 Then find the security group you made in the list. Take note of the Group ID. Select it, then click 'Actions > Edit inbound rules'. 
-Add a rule that allows all TCP through on any port with a source of the Group ID you just noted. It should look something like: {image}
+Add a rule that allows all TCP through on any port with a source of the Group ID you just noted. It should look something like:
+
+![security group](.aws-tutorial/tcp-security-group.png)
 
 # Data Metadata
 ## Columns in the table
