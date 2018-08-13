@@ -15,16 +15,6 @@ from multiprocessing import Process, Queue
 import queue
 
 from pmlb import classification_dataset_names
-from todo import TodoList
-
-# s.listen(5)
-
-# while True:
-#     c, addr = s.accept()
-
-#     print("Connected to {}".format(addr))
-#     c.send(b"Hello!")
-#     c.close()
 
 from classifiers import AdaBoostClassifier
 from classifiers import BernoulliNB
@@ -61,14 +51,21 @@ classifier_functions = {
     "XGBClassifier": XGBClassifier # 30492
 }
 
-class Death(Exception): pass
+class Death(Exception):
+    '''An exception because you can't break out of the outer loop from an inner loop in python.
+    This exception is used when a client terminates or sends nonsense. '''
+    pass
 
-resultdir = "."
+
+resultdir = "." # default result dir
 
 def flatten(l):
+    '''Takes a list of lists and returns a 1d list.
+    e.g. flatten( [[1.], [2.], [3.]] ) -> [1., 2., 3.] '''
     return [item for sublist in l for item in sublist]
 
 def make_parser():
+    '''Construct the option parser'''
     descr = "Scheduler that hands out trials and collects results."
     parser = argparse.ArgumentParser(description=descr)
 
@@ -81,6 +78,7 @@ def make_parser():
     return parser
 
 def start_server(port):
+    '''Start a server at the given port and return the socket object.'''
     s = socket.socket()
     host = socket.gethostname()
     s.bind((host, port))
@@ -88,12 +86,16 @@ def start_server(port):
     return s
 
 def stop_server(server):
+    '''Close the server'''
     server.close()
 
 def send_msg(client, msg):
+    '''Send the given client the given dictionary.'''
     client.send(trial_msg.serialize(msg))
 
 def committer(commit_queue):
+    '''Watches the given queue and attempts to commit dataframes
+    in the queue to a file.'''
     while True:
         try:
             item = commit_queue.get()
@@ -109,9 +111,10 @@ def committer(commit_queue):
 
 MAX_TIMEOUT = 1000
 def handler(pid, client, todo_queue, total):
+    '''The backbone of the scheduler. Handles all communication between clients.'''
     hostname, port = client.getsockname()
     timeout = 0
-    owned_tasks = set()
+    # owned_tasks = set()
     print("Started [{}] : {}".format(pid, hostname))
     client.settimeout(1)
     while True:
@@ -120,28 +123,33 @@ def handler(pid, client, todo_queue, total):
                 print("[{}] {} timed out!".format(pid, hostname))
                 break
 
+            # receive any data from the client
             data = trial_msg.deserialize(client.recv(trial_msg.SIZE))
 
+            # if we receive nothing, kill this client
             if data == None:
                 print("[{}] {} died! Removing!".format(pid, hostname))
                 break
 
+            # for every packet
             for data in data:
                 timeout = 0
                 msg_type = data['msg_type']
+                # switch on msg_type
                 if msg_type == trial_msg.VERIFY:
                     send_msg(client, {'msg_type': trial_msg.SUCCESS})
 
                 elif msg_type == trial_msg.TRIAL_REQUEST:
+                    # attempt to get a new trial to send to the client
                     ident, dataset, method, params = None, None, None, None
                     try:
-                        ident, dataset, method, params = todo_queue.get(True, 1)
+                        ident, dataset, method, params = todo_queue.get(block=True, timeout=1)
                     except queue.Empty:
                         print("No more trials!")
                         send_msg(client, {'msg_type': trial_msg.TERMINATE})
                         break
 
-                    owned_tasks.add(ident)
+                    # owned_tasks.add(ident)
                     msg = {'msg_type': trial_msg.TRIAL_DETAILS,
                            'id': ident,
                            'dataset': dataset,
@@ -151,6 +159,7 @@ def handler(pid, client, todo_queue, total):
                     print("[*] -> [{}] : Handed out #{}: {} {} {}".format(pid, ident, dataset, method, list(params.values())))
 
                 elif msg_type == trial_msg.TRIAL_DONE:
+                    # client finished a trial, add result to commit queue
                     ident = data['id']
                     trial_result = data['data']
                     print("[*] <- [{}] : Finished #{}".format(pid, ident))
@@ -159,9 +168,10 @@ def handler(pid, client, todo_queue, total):
                     commit_queue.put((trial_result, 'tmp', ident, qsize, 1. - (qsize / total)))
 
                     send_msg(client, {'msg_type': trial_msg.SUCCESS})
-                    owned_tasks.remove(ident)
+                    # owned_tasks.remove(ident)
 
                 elif msg_type == trial_msg.TRIAL_CANCEL:
+                    # client aborted trial, commit reason
                     ident = data['id']
                     reason = data['reason']
                     print("[*] <- [{}] : Aborted #{} b/c {}!".format(pid, ident, reason))
@@ -174,13 +184,15 @@ def handler(pid, client, todo_queue, total):
                     commit_queue.put((trial_result, 'bad', ident, qsize, 1. - (qsize / total)))
 
                     send_msg(client, {'msg_type': trial_msg.SUCCESS})
-                    owned_tasks.remove(ident)
+                    # owned_tasks.remove(ident)
 
                 elif msg_type == trial_msg.TERMINATE:
+                    # client terminated, kill handler for this the client
                     print("[*] <- [{}] : Terminated!".format(pid))
                     raise Death
 
                 else:
+                    # got gibberish, kill handler for this client
                     print("[*] <- [{}] : Unknown msg type: {}".format(pid, msg_type))
                     raise Death
 
@@ -196,8 +208,9 @@ def handler(pid, client, todo_queue, total):
     print("[*] Process {} died!".format(pid), flush=True)
 
 if __name__ == "__main__":
-    options = make_parser().parse_args()
+    options = make_parser().parse_args() # get command line options
 
+    # make results directory of it doesn't exist
     try:
         os.mkdir(options.resultdir)
     except OSError:
@@ -210,16 +223,20 @@ if __name__ == "__main__":
     todo_queue = Queue()
     completed = set()
     if options.resume:
+        # read all ids from filenames in resultdir and add them to the completed set
         p = Path(resultdir)
         ids = list(map(lambda s: int(s.stem.split('-')[1]), p.glob("*.pkl")))
         for i in ids:
             completed.add(i)
 
+    # get all parameter settings
     if options.default:
         params = {key: [{}] for key in classifier_functions}
     else:
         params = {key: item.get_pipeline_parameters()
                   for key, item in classifier_functions.items()}
+
+    # add everything that is not completed to the todo queue
     ident = 0
     for name in classification_dataset_names:
         for key in sorted(params):
@@ -230,16 +247,20 @@ if __name__ == "__main__":
     total = ident
     print("found {} incomplete trials!".format(todo_queue.qsize(), flush=True))
 
+    # start the committer process
     commit_queue = Queue()
     committer_p = Process(target=committer, args=(commit_queue,))
     committer_p.start()
 
+    # start the server and start listening for clients
     s = start_server(options.port)
     print("Starting to listen...", flush=True)
     s.listen(options.max_connections)
+
     processes = {}
     try:
         while True:
+            # every time we find a new client, start a handler process for it
             c, addr = s.accept()
             p = Process(target=handler, args=(len(processes.keys()), c, todo_queue, total))
             p.start()
@@ -247,7 +268,10 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("Shutting down server!")
 
+    # kill the committer process
     commit_queue.put(None)
     committer_p.join()
+
+    # join all handler processes
     for p in processes.values():
         p.join()

@@ -1,5 +1,6 @@
 import json
 
+# payload size
 SIZE = 4096
 
 # msg types
@@ -15,14 +16,24 @@ TRIAL_CANCEL = "cancel"
 TRIAL_SEND = "send"
 TRIAL_DATA = "data"
 
+# debugging
+DEBUG = False
+def debug(s):
+    if DEBUG: print(s)
+
 def serialize(data):
+    '''Serializes a dictionary into json bytes'''
     if isinstance(data, dict):
-        # print("<- {}".format(data))
+        debug("<- {}".format(data))
         return bytes(json.dumps(data), 'ascii')
     else:
         raise TypeError("data needs to have type 'dict'")
 
 def deserialize(data):
+    ''' Takes a json byte string and returns a list of dictionaries.
+    This function returns a list because sometimes we get multiple payloads
+    in one packet.
+    '''
     try:
         if isinstance(data, bytes):
             if len(data) != 0:
@@ -38,7 +49,7 @@ def deserialize(data):
 
                 # reverse so that the order is correct (last should be processed first)
                 results.reverse()
-                # print("-> [{}] {}".format(len(results), results))
+                debug("-> [{}] {}".format(len(results), results))
                 return results
             else:
                 return None
