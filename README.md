@@ -116,6 +116,64 @@ Add a rule that allows all TCP through on any port with a source of the Group ID
 
 ![security group](.aws-tutorial/tcp-security-group.png)
 
+You might also need to add more SSH rules if you access your machines from multiple wifi networks. You can use this same process.
+
+### Launch Template for the Spot Fleet
+We now want to create a launch template for a spot fleet. Here we will specify the AMI to use, the security group to use, and a startup script.
+There is a nice versioning system that makes it easier to update launch templates in the future. This is nice for changing the startup script and the AMI
+as you debug problems. Before you make the launch template, be sure to note the AMI id and the Security Group id.
+Find 'Launch Templates' in the side bar and click 'Create launch template'. We want to create a new template so choose that option. In the future,
+choose 'Create a template version' for updating your launch template. Give it a name and description. We'll leave the 'Source template' as None.
+Enter the AMI id next. We don't need to specify the Instance Type here. We'll do that in the actual Spot Fleet Request. Enter the name of your KeyPair and
+keep the network type as 'VPC'. Next, scroll down to the Security Groups session, click 'Add new security groups' and then enter the security group id.
+Open 'Advanced Details' and find the very last box titled 'User data'. We we can put a startup script. Copy the text from file `aws-spot-start.sh` into this box.
+Later we'll need to update the D3MHOST variable to hold the IP of our scheduler. For now, it doesn't matter what this value is.
+
+![user data](.aws-tutorial/user-data.png)
+
+This is all we need for now, click 'Create launch template'.
+
+### Spot Instances Configuration
+Now we want to get a Spot Instance configuration file to use with the `aws-automation` script. If you want, you can go through the GUI
+every time you want to request a fleet. I found it more convienent to download the JSON configuration file and then launch the fleet from the CLI.
+If you want to use the CLI, do this step now. Otherwise, do this step after launching the scheduler. 
+
+Go to 'Spot Requests > Request Spot Instances'. Choose the Request type and Amount based on what you want. I went with 'Request and Maintain' and a total target capacity of 100 vCPUs.
+These settings are easy to change by editing the JSON file, so you're not locked into these choices. You can even dynamically change the target capacity after you launch the fleet.
+The important thing is to select the Launch Template we created in the previous step. You should see that all the things we changed in the Launch Template now show up here.
+Make sure to select all instance types that you would be ok requesting
+(Selecting them here doesn't mean you will necessarily get these machines. It only means you might get these machines). 
+If you plan on using the CLI, then you need to set the max price (find this option at the bottom of the page). I set mine to "$0.15".
+If you plan on uing the GUI, you don't need to set this. It defaults to capping at the 'On-Demand' price. Now you can download the JSON config (for CLI) or click 'Launch' (for GUI).
+Take a quick look at the JSON file you downloaded and note where the Version is for the launch template is. When you update you're launch template, you'll need to increment this number.
+You can also change the 'TargetCapacity' field to change the size of your request. 
+
+### Starting the Scheduler
+Next we have to start the scheduler. Simply launch an instance with the AMI you created earlier. I would recommend choosing a slightly beefy machine so that you can get higher throughput.
+It's also important to increase the storage of this machine to something like 100GB so that you don't have a chance of running out of storage.
+Once this instance is launched, SSH into the machine and run `./src/scheduler.py` with the arguments you want within a tmux session.
+For convienence, you can also source `scheduler-start.sh` which starts the scheduler for you. Attach to the tmux session if you haven't already with `tmux a` and you should 
+see some output similar to the following:
+
+![output](.aws-tutorial/start-scheduler.png)
+
+Note the IP address where the program starts the server.
+
+### Launching the Spot Fleet
+We need to update the launch template with the IP address of the scheduler. Follow the same process as creating a launch template, but this time select 'Create a new template version'.
+Select the template you want to update and make sure to select the most recent version in the 'Source Template Version' box.
+Leave almost everything else unchanged. Go down to 'Advanced Details' and then 'User data'. Update the 'D3MHOST' variable with the IP address of the scheduler.
+If you used a different port than the default, update that as well. Save the template.
+If you're using the CLI, make sure to go into the config.json file and update the Launch Template version. If you haven't done so already, clone the 
+[aws-automation](https://github.com/sgpthomas/aws-automation) repository. Replace the config.json file there with your own. Then run `./aws-spot.py start-spot`. 
+You might have to go into that script and change the region variable at the top of the file. If you go back to the GUI, you should be able to see your spot request.
+It should get fullfilled quickly and the instances will start showing up in your 'Instances' pane. If you SSH into your scheduler, and go into the Tmux session
+you should see clients connecting to the scheduler and everything starting to run.
+
+If you're using the GUI, follow the Spot Instances Configuration instructions for GUI.
+
+`./aws.py` provides some convienence tools for monitoring and SSHing into your instances.
+
 # Data Metadata
 ## Columns in the table
  - dataset
