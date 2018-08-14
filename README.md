@@ -143,6 +143,9 @@ These settings are easy to change by editing the JSON file, so you're not locked
 The important thing is to select the Launch Template we created in the previous step. You should see that all the things we changed in the Launch Template now show up here.
 Make sure to select all instance types that you would be ok requesting
 (Selecting them here doesn't mean you will necessarily get these machines. It only means you might get these machines). 
+
+![select instance](.aws-tutorial/choose-instance.png)
+
 If you plan on using the CLI, then you need to set the max price (find this option at the bottom of the page). I set mine to "$0.15".
 If you plan on uing the GUI, you don't need to set this. It defaults to capping at the 'On-Demand' price. Now you can download the JSON config (for CLI) or click 'Launch' (for GUI).
 Take a quick look at the JSON file you downloaded and note where the Version is for the launch template is. When you update you're launch template, you'll need to increment this number.
@@ -172,7 +175,7 @@ you should see clients connecting to the scheduler and everything starting to ru
 
 If you're using the GUI, follow the Spot Instances Configuration instructions for GUI.
 
-`./aws.py` provides some convienence tools for monitoring and SSHing into your instances.
+`./aws.py` provides some convienence tools for monitoring and SSHing into your instances. It's documented here: [aws-automation](https://github.com/sgpthomas/aws-automation)
 
 # Data Metadata
 ## Columns in the table
